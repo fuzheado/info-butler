@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  hermes-agent:
+    image: nousresearch/hermes-agent:latest
+    container_name: hermes-butler
+    restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 6g
+    ports:
+      - "9119:9119" # Exposes Admin Dashboard WebSockets for the Remote Desktop App
+    environment:
+      - TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
+      - GEMINI_API_KEY=your_google_gemini_api_key_here
+      - OPENAI_API_KEY=your_openai_api_key_here
+      - GATEWAY_ALLOW_ALL_USERS=true
+      - HERMES_DASHBOARD=1
+      - OLLAMA_HOST=http://host.docker.internal:11434
+    volumes:
+      - ./wiki:/opt/data/wiki
+      - ./config:/opt/data/config
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  quartz-visualizer:
+    image: node:22-alpine
+    container_name: quartz-wiki
+    restart: unless-stopped
+    ports:
+      - "8080:8080" # Exposes the browseable, interactive mind-map website
+    volumes:
+      - ./wiki:/usr/src/app/content # Binds Quartz content directory directly to the folder Hermes edits
+    working_dir: /usr/src/app
+    command: >
+      sh -c "if [ ! -d '.git' ]; then
+               apk add --no-cache git &&
+               git clone https://github.com/jackyzha0/quartz.git . &&
+               npm ci &&
+               npx quartz create --action copy --link content;
+             fi &&
+             npx quartz build --serve --port 8080"
