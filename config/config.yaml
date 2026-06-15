@@ -1,7 +1,9 @@
-# Hermes model configuration: route through local Ollama
-# Ollama exposes an OpenAI-compatible API at /v1
+# Default chat model: local Ollama (OpenAI-compatible API)
+# This only affects chat/conversation routing.
+# Image generation and other tools use their own provider configs
+# and require a real OPENAI_API_KEY in the container env.
 model:
   provider: openai
   base_url: http://host.docker.internal:11434/v1
-  api_key: ollama
+  api_key: ollama     # Ollama doesn't validate keys; any value works
   model: qwen3.5:4b

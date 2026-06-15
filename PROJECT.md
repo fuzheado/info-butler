@@ -157,11 +157,12 @@ services:
       - TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
       - TELEGRAM_ALLOWED_USERS=user_id_1,user_id_2
       - TELEGRAM_GROUP_ALLOWED_CHATS=-1001234567890
-      # ── Local model: Ollama (OpenAI-compatible endpoint) ──
+      # ── Local chat model: Ollama via OpenAI-compatible API ──
       - OPENAI_BASE_URL=http://host.docker.internal:11434/v1
-      - OPENAI_API_KEY=ollama
       - HERMES_MODEL=qwen3.5:4b
-      # ── Cloud fallbacks for heavy tasks ──
+      # ── Image generation & tools: real OpenAI key ──
+      - OPENAI_API_KEY=sk-your-real-openai-key-here
+      # ── Cloud fallback for heavy reasoning ──
       - GEMINI_API_KEY=your_google_gemini_api_key_here
       # Dashboard disabled — needs auth provider plugin or --insecure flag
       # - HERMES_DASHBOARD=1
@@ -199,17 +200,31 @@ services:
 4. **Disable privacy mode (required for @mentions in groups):** In @BotFather, go to `/mybots` → your bot → Bot Settings → Group Privacy → Turn off. Then **remove and re-add** the bot to your group (Telegram caches privacy on join).
 
    > **Why this matters:** With privacy mode on (the default), Telegram only delivers messages starting with `/` to the bot. `@your_bot_name` mentions are silently dropped. After disabling privacy mode, both `/commands` and `@mentions` will work. The bot must be removed and re-added to the group after changing this setting — Telegram does not re-evaluate privacy until the bot rejoins.
-5. **Configure the local model:** Hermes is pre-configured to use Ollama as its model backend via:
+5. **Configure the local chat model:** Hermes is pre-configured to use Ollama (Qwen 3.5 4B) for all chat conversations. This is done via two layers:
 
    ```yaml
+   # Env vars in docker-compose.yml (override the default base URL and model)
    OPENAI_BASE_URL=http://host.docker.internal:11434/v1
-   OPENAI_API_KEY=ollama          # Ollama doesn't validate keys; any value works
    HERMES_MODEL=qwen3.5:4b
+
+   # Mounted config file (sets the provider to 'openai')
+   # File: config/config.yaml
+   model:
+     provider: openai
+     base_url: http://host.docker.internal:11434/v1
+     api_key: ollama
+     model: qwen3.5:4b
    ```
 
-   And a `config/config.yaml` file is mounted into the container at `/opt/data/config.yaml` with the provider set to `openai`. This survives container restarts and rebuilds.
+   This survives restarts, rebuilds, and full machine reboots.
 
-6. **Set cloud API keys (optional, for heavy tasks):** `GEMINI_API_KEY` from [Google AI Studio](https://aistudio.google.com). The local Qwen model handles routine chat parsing for free; Gemini is only called for complex tasks.
+6. **Set a real OpenAI key for image generation (optional):** The `gpt-image-1-mini` tool calls OpenAI directly, not through Ollama. Even though `OPENAI_BASE_URL` points at your local model, non-chat tools bypass it and hit OpenAI's API. Set this if you want `/draw` commands to work:
+
+   ```yaml
+   - OPENAI_API_KEY=sk-your-real-openai-key-here
+   ```
+
+7. **Set Gemini key (optional, for heavy tasks):** `GEMINI_API_KEY` from [Google AI Studio](https://aistudio.google.com). Only needed for complex document parsing and code generation — the local Qwen handles routine chat for free.
 
 > ⚠️ If you accidentally expose your bot token (as happened during setup), revoke it immediately via @BotFather → `/mybots` → your bot → API Token → Revoke. Then update `TELEGRAM_BOT_TOKEN` in `docker-compose.yml` with the new one.
 

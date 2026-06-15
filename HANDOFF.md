@@ -52,10 +52,11 @@ services:
       - TELEGRAM_BOT_TOKEN          → placeholder (was exposed, needs new one)
       - TELEGRAM_ALLOWED_USERS      → placeholder
       - TELEGRAM_GROUP_ALLOWED_CHATS → placeholder
-      # Local model (Ollama)
+      # Local chat model (Ollama)
       - OPENAI_BASE_URL=http://host.docker.internal:11434/v1
-      - OPENAI_API_KEY=ollama
       - HERMES_MODEL=qwen3.5:4b
+      # Image generation / tools (real OpenAI key)
+      - OPENAI_API_KEY              → sk-your-key
       # Cloud fallback
       - GEMINI_API_KEY              → placeholder
       # Dashboard disabled
