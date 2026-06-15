@@ -283,3 +283,62 @@ docker compose up -d
 | Bot works in DMs but silent in group | Privacy mode is on | Disable in @BotFather, remove & re-add bot |
 | `Additional property memory is not allowed` | `memory` at service level (v3.8) | Nest under `deploy.resources.limits` |
 | Container can't reach Ollama | `host.docker.internal` unreachable | Verify Ollama is running; check `OLLAMA_HOST` |
+
+---
+
+## 7. Surviving Reboots: Auto-Recovery & Startup Sequencing
+
+For a 24/7 agent on a Mac Mini, the stack needs to come back fully functional after a power cycle or macOS update — without anyone logging in or running commands.
+
+### What needs to auto-start
+
+| Component | Mechanism | Status |
+|---|---|---|
+| **Ollama** (natively on macOS) | macOS Login Item (set during install) | ✅ Auto-starts by default |
+| **Colima** (Docker runtime) | `brew services start colima` | ⚙️ One-time setup below |
+| **Hermes + Quartz** (containers) | `restart: unless-stopped` in docker-compose.yml | ✅ Docker daemon restores them automatically |
+
+### One-time setup
+
+```bash
+# 1. Register Colima as a launchd service (auto-starts at login)
+brew services start colima
+
+# 2. Make sure Ollama's env vars survive reboot
+# (These were in ~/.zshrc but that only applies to terminals, not the app)
+launchctl setenv OLLAMA_NUM_PARALLEL 2
+launchctl setenv OLLAMA_KEEP_ALIVE 24h
+
+# 3. Restart Ollama so it picks up the env vars
+killall ollama && open -a Ollama
+```
+
+> **Check it survived a reboot:** After restarting the Mac, run `docker info` and `curl http://localhost:11434/api/tags` without touching anything. Both should respond within 30 seconds of login.
+
+### Startup sequence (what happens after a power cycle)
+
+```
+Mac boots
+  │
+  ├── macOS login (auto-login or manual)
+  │     │
+  │     ├── Ollama app starts (Login Item)             → ~5s after login
+  │     ├── Colima starts (brew services / launchd)     → ~10-15s after login
+  │     │     └── Docker daemon comes up
+  │     │           └── Hermes container restarts       → Docker's restart policy
+  │     │                 └── Quartz container restarts  → Docker's restart policy
+  │     │
+  │     └── Hermes connects to Ollama                   → retries until ready (~30s)
+  │           └── Bot goes online
+```
+
+No cron job, no startup script, no manual `docker compose up -d` needed. Docker daemon stores the restart policy for each container permanently. When the daemon comes back, it reconciles all containers against their policies and starts anything set to `unless-stopped` or `always`.
+
+### Optional: Enable auto-login (headless/server Mac Mini)
+
+If the Mac Mini runs headless (no monitor, nobody logs in via GUI), services won't start because launchd agents run at the user level, not at boot. To fix this:
+
+1. **System Settings → Users & Groups → Login Options → Auto-log in** — set to your user account.
+2. The Mac will boot straight to the desktop, and all Login Items + `brew services` will fire.
+
+> Without auto-login, a power outage means the stack stays down until someone physically logs in or connects via SSH.
