@@ -195,7 +195,9 @@ services:
 1. **Create a bot:** Message [@BotFather](https://t.me/BotFather), send `/newbot`, pick a name and username. Save the API token — that's `TELEGRAM_BOT_TOKEN`.
 2. **Get user IDs:** Each authorized person messages [@userinfobot](https://t.me/userinfobot) — it replies with their numeric ID. Add them to `TELEGRAM_ALLOWED_USERS`.
 3. **Get the group chat ID:** Open your group in [web.telegram.org](https://web.telegram.org). The URL contains `#-1001234567890` — that number is `TELEGRAM_GROUP_ALLOWED_CHATS`.
-4. **Disable privacy mode (required for group listening):** In @BotFather, go to `/mybots` → your bot → Bot Settings → Group Privacy → Turn off. Then **remove and re-add** the bot to your group (Telegram caches privacy on join).
+4. **Disable privacy mode (required for @mentions in groups):** In @BotFather, go to `/mybots` → your bot → Bot Settings → Group Privacy → Turn off. Then **remove and re-add** the bot to your group (Telegram caches privacy on join).
+
+   > **Why this matters:** With privacy mode on (the default), Telegram only delivers messages starting with `/` to the bot. `@your_bot_name` mentions are silently dropped. After disabling privacy mode, both `/commands` and `@mentions` will work. The bot must be removed and re-added to the group after changing this setting — Telegram does not re-evaluate privacy until the bot rejoins.
 5. **Set API keys:** `GEMINI_API_KEY` from [Google AI Studio](https://aistudio.google.com), `OPENAI_API_KEY` from [platform.openai.com](https://platform.openai.com).
 
 > ⚠️ If you accidentally expose your bot token (as happened during setup), revoke it immediately via @BotFather → `/mybots` → your bot → API Token → Revoke. Then update `TELEGRAM_BOT_TOKEN` in `docker-compose.yml` with the new one.
@@ -265,10 +267,13 @@ docker compose up -d
 
 ### Verification Steps:
 
-1. Confirm the Telegram gateway initialized:
+1. Confirm the Telegram gateway connected by checking the gateway log file inside the container:
    ```bash
-   docker logs hermes-butler 2>&1 | grep -i "telegram"
+   docker exec hermes-butler tail -20 /opt/data/logs/gateway.log
    ```
+   You should see `✓ telegram connected` and `[Telegram] Connected to Telegram (polling mode)`.
+
+   > **Note:** `docker logs hermes-butler` only shows the s6 init system banner, not the actual gateway logs. Hermes writes its detailed logs to `/opt/data/logs/gateway.log` inside the container.
 2. Send a message to the bot in your group (e.g. `/help`). Check delivery:
    ```bash
    curl -s "https://api.telegram.org/bot<TOKEN>/getUpdates" | python3 -m json.tool
@@ -277,12 +282,37 @@ docker compose up -d
 4. Test visual linking: `@YourBotName link [[Database_Architecture]] to [[M1_Mac_Hosting]]`
 5. **Latency Expectation:** Quartz is a static-batch site generator. A new node typically appears on the visual graph within **15–30 seconds** after the agent writes the file.
 
+### Where to find the real gateway logs
+
+The s6 init system outputs the startup banner to stdout (`docker logs`), but the actual gateway activity — Telegram connection, message handling, errors — goes to a log file inside the container:
+
+```bash
+# View recent gateway activity
+docker exec hermes-butler tail -50 /opt/data/logs/gateway.log
+
+# Follow live (like tail -f)
+docker exec -it hermes-butler tail -f /opt/data/logs/gateway.log
+```
+
+If you prefer the logs accessible from the host directly, add this volume mount to the `hermes-agent` service in `docker-compose.yml`:
+
+```yaml
+    volumes:
+      - ./wiki:/opt/data/wiki
+      - ./config:/opt/data/config
+      - ./logs:/opt/data/logs   # ← exposes gateway.log on the host
+```
+
+Then `cat ~/info-butler/logs/gateway.log` without needing `docker exec`.
+
 ### Troubleshooting
 
 | Symptom | Likely Cause | Fix |
 |---|---|---|
 | `getUpdates` returns `[]` | Bot hasn't received any messages | Send `/start` in the group, retry |
-| Bot works in DMs but silent in group | Privacy mode is on | Disable in @BotFather, remove & re-add bot |
+| Bot responds to `/` commands but ignores `@mentions` | Privacy mode is on (default) | Disable in @BotFather, **remove & re-add** bot to group |
+| Bot works in DMs but silent in group | Privacy mode is on, or not re-added after change | Disable privacy, remove and re-add bot |
+| `docker logs` shows banner but no Telegram activity | Normal — gateway logs go to file | Use `docker exec hermes-butler tail /opt/data/logs/gateway.log` |
 | `Additional property memory is not allowed` | `memory` at service level (v3.8) | Nest under `deploy.resources.limits` |
 | Container can't reach Ollama | `host.docker.internal` unreachable | Verify Ollama is running; check `OLLAMA_HOST` |
 

@@ -142,8 +142,12 @@ services:
 ### 🧪 Testing needed
 
 9. Start the stack: `docker compose up -d`
-10. Verify Telegram gateway is polling: `docker logs hermes-butler`
-11. Send a test message to the bot in the group
+10. Verify Telegram gateway connected — **use the log file inside the container**, not `docker logs`:
+    ```bash
+    docker exec hermes-butler tail -20 /opt/data/logs/gateway.log
+    # Look for: ✓ telegram connected
+    ```
+11. Send a test message — `/help` should work immediately; `@bot_name` only works after privacy mode is disabled
 12. Verify Quartz is serving: `http://localhost:8080`
 
 ### 📝 Future work (from analysis.md)
@@ -159,7 +163,8 @@ services:
 
 - **Quartz is not real-time** — It's a static site generator. Graph updates take 15–30 seconds, not "seconds" as originally claimed. This is by design and acceptable.
 - **Bot token exposure** — The old token is compromised. Don't deploy with it. Revoke first.
-- **Privacy mode confusion** — The bot will be silent in groups until privacy mode is turned off in BotFather AND the bot is removed/re-added to the group.
+- **Privacy mode confusion** — The bot will respond to `/commands` but silently ignore `@mentions` until privacy mode is off in BotFather AND the bot is removed/re-added to the group. This is a Telegram API limitation, not a Hermes config issue.
+- **Gateway logs go to a file, not stdout** — `docker logs` only shows the s6 init banner. Always use `docker exec hermes-butler tail /opt/data/logs/gateway.log` to see real activity.
 - **Ollama env vars** — `~/.bashrc` doesn't apply to macOS GUI apps. Must use `launchctl setenv`.
 - **Colima vs Docker autostart** — `brew services start colima` handles auto-start, but only after GUI login. If running headless, macOS auto-login must be enabled.
 
