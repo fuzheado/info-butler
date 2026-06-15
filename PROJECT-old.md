@@ -80,9 +80,9 @@ ollama pull qwen3.5:9b
 
 3. Pin the model memory state and set parallel limits to prevent aggressive unloading over group chat lulls:
    ```bash
-   echo 'export OLLAMA_NUM_PARALLEL=2' >> ~/.zshrc
-   echo 'export OLLAMA_KEEP_ALIVE="24h"' >> ~/.zshrc
-   source ~/.zshrc
+   echo 'export OLLAMA_NUM_PARALLEL=2' >> ~/.bashrc
+   echo 'export OLLAMA_KEEP_ALIVE="24h"' >> ~/.bashrc
+   source ~/.bashrc
 
 ```
 

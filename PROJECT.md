@@ -78,9 +78,9 @@ ollama pull qwen3.5:4b
 ```
 3. Set the system variables to preserve memory stability and prevent aggressive unloading over group chat lulls:
    ```bash
-   echo 'export OLLAMA_NUM_PARALLEL=2' >> ~/.zshrc
-   echo 'export OLLAMA_KEEP_ALIVE="24h"' >> ~/.zshrc
-   source ~/.zshrc
+   echo 'export OLLAMA_NUM_PARALLEL=2' >> ~/.bashrc
+   echo 'export OLLAMA_KEEP_ALIVE="24h"' >> ~/.bashrc
+   source ~/.bashrc
 
 ```
 
@@ -126,6 +126,8 @@ docker compose version  # should be v2+
 ```
 
 > **Note:** `brew install docker` alone is just the CLI client with no runtime — don't stop there. You need Colima or OrbStack to actually run containers.
+
+> **Shell note:** These instructions use `~/.bashrc`. If you use zsh (macOS default since Catalina), replace with `~/.zshrc` instead.
 
 ### Phase 3: The Hardened Multi-Container Orchestration Blueprint
 
@@ -305,7 +307,7 @@ For a 24/7 agent on a Mac Mini, the stack needs to come back fully functional af
 brew services start colima
 
 # 2. Make sure Ollama's env vars survive reboot
-# (These were in ~/.zshrc but that only applies to terminals, not the app)
+# (In ~/.bashrc but that only applies to terminals, not the app — use launchctl)
 launchctl setenv OLLAMA_NUM_PARALLEL 2
 launchctl setenv OLLAMA_KEEP_ALIVE 24h
 
