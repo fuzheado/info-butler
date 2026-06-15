@@ -157,10 +157,11 @@ services:
       - TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
       - TELEGRAM_ALLOWED_USERS=user_id_1,user_id_2
       - TELEGRAM_GROUP_ALLOWED_CHATS=-1001234567890
-      # ── Local chat model: Ollama via OpenAI-compatible API ──
-      - OPENAI_BASE_URL=http://host.docker.internal:11434/v1
-      - HERMES_MODEL=qwen3.5:4b
-      # ── Image generation & tools: real OpenAI key ──
+      # ── Chat model configured via mounted config/config.yaml ──
+      # (uses provider: custom, points at Ollama)
+      # ── OpenAI key for image generation and tools ──
+      # Tools like gpt-image-1-mini call OpenAI directly.
+      # Only needed if you want /draw to work.
       - OPENAI_API_KEY=sk-your-real-openai-key-here
       # ── Cloud fallback for heavy reasoning ──
       - GEMINI_API_KEY=your_google_gemini_api_key_here
@@ -200,25 +201,19 @@ services:
 4. **Disable privacy mode (required for @mentions in groups):** In @BotFather, go to `/mybots` → your bot → Bot Settings → Group Privacy → Turn off. Then **remove and re-add** the bot to your group (Telegram caches privacy on join).
 
    > **Why this matters:** With privacy mode on (the default), Telegram only delivers messages starting with `/` to the bot. `@your_bot_name` mentions are silently dropped. After disabling privacy mode, both `/commands` and `@mentions` will work. The bot must be removed and re-added to the group after changing this setting — Telegram does not re-evaluate privacy until the bot rejoins.
-5. **Configure the local chat model:** Hermes is pre-configured to use Ollama (Qwen 3.5 4B) for all chat conversations. This is done via two layers:
+5. **Configure the local chat model:** A `config/config.yaml` file is mounted into the container with the correct `custom` provider pointing at Ollama:
 
    ```yaml
-   # Env vars in docker-compose.yml (override the default base URL and model)
-   OPENAI_BASE_URL=http://host.docker.internal:11434/v1
-   HERMES_MODEL=qwen3.5:4b
-
-   # Mounted config file (sets the provider to 'openai')
    # File: config/config.yaml
    model:
-     provider: openai
-     base_url: http://host.docker.internal:11434/v1
-     api_key: ollama
-     model: qwen3.5:4b
+     default: "qwen3.5:4b"
+     provider: "custom"
+     base_url: "http://host.docker.internal:11434/v1"
    ```
 
-   This survives restarts, rebuilds, and full machine reboots.
+   This survives restarts, rebuilds, and full machine reboots. No env vars needed — the `custom` provider is configured entirely through the mounted file. The `docker-compose.yml` has no `OPENAI_BASE_URL` or `HERMES_MODEL` env vars because those only work with the `openai` provider (which doesn't exist in Hermes' provider list).
 
-6. **Set a real OpenAI key for image generation (optional):** The `gpt-image-1-mini` tool calls OpenAI directly, not through Ollama. Even though `OPENAI_BASE_URL` points at your local model, non-chat tools bypass it and hit OpenAI's API. Set this if you want `/draw` commands to work:
+6. **Set a real OpenAI key for image generation (optional):** Tools like `gpt-image-1-mini` call OpenAI directly and need a real API key:
 
    ```yaml
    - OPENAI_API_KEY=sk-your-real-openai-key-here

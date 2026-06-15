@@ -18,13 +18,11 @@ services:
       - TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
       - TELEGRAM_ALLOWED_USERS=user_id_1,user_id_2
       - TELEGRAM_GROUP_ALLOWED_CHATS=-1001234567890
-      # ── Local chat model: Ollama via OpenAI-compatible API ──
-      - OPENAI_BASE_URL=http://host.docker.internal:11434/v1
-      - HERMES_MODEL=qwen3.5:4b
-      # ── Image generation & tools: real OpenAI key ──
-      # Tools like gpt-image-1-mini call OpenAI directly, not through Ollama.
-      # OPENAI_BASE_URL only overrides the default chat provider, so the
-      # real key here is needed for non-chat OpenAI services.
+      # ── Chat model configured via mounted config/config.yaml ──
+      # (uses provider: custom, points at Ollama)
+      # ── OpenAI key for image generation and tools ──
+      # Tools like gpt-image-1-mini call OpenAI directly.
+      # Only needed if you want /draw to work.
       - OPENAI_API_KEY=sk-your-real-openai-key-here
       # ── Cloud fallback for heavy reasoning ──
       - GEMINI_API_KEY=your_google_gemini_api_key_here

@@ -52,10 +52,9 @@ services:
       - TELEGRAM_BOT_TOKEN          → placeholder (was exposed, needs new one)
       - TELEGRAM_ALLOWED_USERS      → placeholder
       - TELEGRAM_GROUP_ALLOWED_CHATS → placeholder
-      # Local chat model (Ollama)
-      - OPENAI_BASE_URL=http://host.docker.internal:11434/v1
-      - HERMES_MODEL=qwen3.5:4b
-      # Image generation / tools (real OpenAI key)
+      # Chat model: configured via mounted config/config.yaml
+      #   (provider: custom, Ollama at host.docker.internal:11434/v1)
+      # OpenAI key: for image generation / tools only
       - OPENAI_API_KEY              → sk-your-key
       # Cloud fallback
       - GEMINI_API_KEY              → placeholder
@@ -118,7 +117,7 @@ services:
    - `TELEGRAM_GROUP_ALLOWED_CHATS` — actual group chat ID (from web.telegram.org URL)
    - `GEMINI_API_KEY` — from Google AI Studio (optional — only needed for Gemini fallback)
 
-   The local Ollama config is already pre-filled with the correct values (`OPENAI_BASE_URL`, `OPENAI_API_KEY`, `HERMES_MODEL`). No changes needed there.
+   The local Ollama config is already pre-filled in `config/config.yaml` (provider: `custom`, points at `host.docker.internal:11434/v1`). No changes needed there.
 
 ### 🔧 Setup steps not yet done
 
@@ -174,7 +173,7 @@ services:
 - **Bot token exposure** — The old token is compromised. Don't deploy with it. Revoke first.
 - **Privacy mode confusion** — The bot will respond to `/commands` but silently ignore `@mentions` until privacy mode is off in BotFather AND the bot is removed/re-added to the group. This is a Telegram API limitation, not a Hermes config issue.
 - **Gateway logs go to a file, not stdout** — `docker logs` only shows the s6 init banner. Always use `docker exec hermes-butler tail /opt/data/logs/gateway.log` to see real activity.
-- **Ollama is configured via Hermes' OpenAI-compatible endpoint** — `OPENAI_BASE_URL=http://host.docker.internal:11434/v1` + `OPENAI_API_KEY=ollama` + a mounted `config/config.yaml`. The `OLLAMA_HOST` env var does nothing (not a Hermes variable).
+- **Ollama uses Hermes' `custom` provider, not `openai`** — `provider: openai` is not a valid Hermes provider. The correct config is in `config/config.yaml`: `provider: custom` with `base_url: http://host.docker.internal:11434/v1`. The `OPENAI_BASE_URL` and `HERMES_MODEL` env vars are not used — the mounted config file handles everything.
 - **Ollama env vars** — `~/.bashrc` doesn't apply to macOS GUI apps. Must use `launchctl setenv`.
 - **Colima vs Docker autostart** — `brew services start colima` handles auto-start, but only after GUI login. If running headless, macOS auto-login must be enabled.
 
