@@ -52,10 +52,10 @@ services:
       - TELEGRAM_BOT_TOKEN          → placeholder (was exposed, needs new one)
       - TELEGRAM_ALLOWED_USERS      → placeholder
       - TELEGRAM_GROUP_ALLOWED_CHATS → placeholder
-      # Chat model: configured via mounted config/config.yaml
-      #   (provider: custom, Ollama at host.docker.internal:11434/v1)
-      # OpenAI key: for image generation / tools only
-      - OPENAI_API_KEY              → sk-your-key
+      # Primary model: DeepSeek V4 Flash
+      - DEEPSEEK_API_KEY            → sk-your-deepseek-key
+      # OpenAI key: for image generation / tools
+      - OPENAI_API_KEY              → sk-your-openai-key
       # Cloud fallback
       - GEMINI_API_KEY              → placeholder
       # Dashboard disabled
@@ -115,9 +115,11 @@ services:
    - `TELEGRAM_BOT_TOKEN` — new token after revocation
    - `TELEGRAM_ALLOWED_USERS` — actual numeric user IDs (from @userinfobot)
    - `TELEGRAM_GROUP_ALLOWED_CHATS` — actual group chat ID (from web.telegram.org URL)
-   - `GEMINI_API_KEY` — from Google AI Studio (optional — only needed for Gemini fallback)
+   - `DEEPSEEK_API_KEY` — from [DeepSeek platform](https://platform.deepseek.com) — **required** (primary model)
+   - `OPENAI_API_KEY` — from [platform.openai.com](https://platform.openai.com) — optional, for image generation
+   - `GEMINI_API_KEY` — from Google AI Studio — optional, for document parsing fallback
 
-   The local Ollama config is already pre-filled in `config/config.yaml` (provider: `custom`, points at `host.docker.internal:11434/v1`). No changes needed there.
+   The `config/config.yaml` is pre-configured for DeepSeek V4 Flash. No changes needed there.
 
 ### 🔧 Setup steps not yet done
 
@@ -127,25 +129,16 @@ services:
    colima start --cpu 4 --memory 8 --disk 60 --vm-type=vz --mount-type=virtiofs
    ```
 
-4. **Install Ollama and pull the model:**
-   ```bash
-   ollama pull qwen3.5:4b
-   ```
-
-5. **Set Ollama env vars** (via `launchctl setenv`, not `~/.bashrc`):
-   ```bash
-   launchctl setenv OLLAMA_NUM_PARALLEL 2
-   launchctl setenv OLLAMA_KEEP_ALIVE 24h
-   killall ollama && open -a Ollama
-   ```
-
-6. **Disable Telegram privacy mode** for the bot (it defaults to on):
+4. **Disable Telegram privacy mode** for the bot (it defaults to on):
    - @BotFather → `/mybots` → bot → Bot Settings → Group Privacy → Turn off
    - Remove and re-add bot to the group
 
-7. **Create the Hermes profile** (`~/info-butler/config/profile.yaml`) — content in PROJECT.md §4.1
+5. **Activate the Hermes profile** (`~/info-butler/config/profile.yaml`):
+   ```bash
+   docker exec hermes-butler hermes profile activate info_butler
+   ```
 
-8. **Set up `brew services start colima`** for auto-start on reboot
+6. **Set up `brew services start colima`** for auto-start on reboot
 
 ### 🧪 Testing needed
 
@@ -173,8 +166,9 @@ services:
 - **Bot token exposure** — The old token is compromised. Don't deploy with it. Revoke first.
 - **Privacy mode confusion** — The bot will respond to `/commands` but silently ignore `@mentions` until privacy mode is off in BotFather AND the bot is removed/re-added to the group. This is a Telegram API limitation, not a Hermes config issue.
 - **Gateway logs go to a file, not stdout** — `docker logs` only shows the s6 init banner. Always use `docker exec hermes-butler tail /opt/data/logs/gateway.log` to see real activity.
-- **Ollama uses Hermes' `custom` provider, not `openai`** — `provider: openai` is not a valid Hermes provider. The correct config is in `config/config.yaml`: `provider: custom` with `base_url: http://host.docker.internal:11434/v1`. The `OPENAI_BASE_URL` and `HERMES_MODEL` env vars are not used — the mounted config file handles everything.
-- **Ollama env vars** — `~/.bashrc` doesn't apply to macOS GUI apps. Must use `launchctl setenv`.
+- **Primary model is DeepSeek V4 Flash (cloud API)** — $0.14/1M input, $0.28/1M output. Fast tool calling. No local model needed — frees up all 16 GB RAM for Docker + macOS.
+- **Hermes has a built-in `deepseek` provider** — no base URL needed. Just set `DEEPSEEK_API_KEY` and `model.provider: deepseek` in config.
+- **No Ollama management** — no local model to babysit, no context window tuning, no API timeout tweaks.
 - **Colima vs Docker autostart** — `brew services start colima` handles auto-start, but only after GUI login. If running headless, macOS auto-login must be enabled.
 
 ---

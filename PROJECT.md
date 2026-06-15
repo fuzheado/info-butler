@@ -55,7 +55,7 @@ To give your team complete freedom to experiment without freezing your local har
 
 | Task Type | Target Model / Engine | Host Environment | Core Performance Metric |
 | --- | --- | --- | --- |
-| **Chat Parsing & Wiki Updates** | **Qwen 3.5 4B** (Q4_K_M ~3.4GB) | Local (Ollama + Metal) | **$0.00** (Free, 100% Private) |
+| **Chat Parsing, Tool Calls & Wiki Updates** | **DeepSeek V4 Flash** | Cloud API (DeepSeek) | **Very Cheap** ($0.14 / 1M input) |
 | **Massive File Ingestion (Audio/PDF)** | **Gemini 3.1 Flash-Lite** | Cloud API | **Virtually Free** ($0.25 / 1M tokens) |
 | **Web Prototyping & App Building** | **Gemini 3.5 Flash** | Cloud API | **Highly Efficient** ($1.50 / 1M tokens) |
 | **Asset & Image Generation** | **GPT Image 1 Mini** | Cloud API | **Fixed Cost** ($0.005 / image) |
@@ -66,23 +66,11 @@ To give your team complete freedom to experiment without freezing your local har
 
 Log onto the brand-new Mac Mini and execute the following deployment phases sequentially.
 
-### Phase 1: Native Inference Base Setup
+### Phase 1: API Keys & Cloud Provider Setup
 
-We run **Ollama** natively at the macOS host level to ensure zero translation loss when hitting the Apple Silicon GPU via Metal.
+No local model is needed. The primary model is **DeepSeek V4 Flash** — a cloud API that costs ~$0.14 per 1M input tokens and handles tool calling, coding, and chat with fast responses. You'll add your API keys in the credential walkthrough below.
 
-1. Download and open the official Ollama for Mac application.
-2. In the terminal, pull down the lightweight, high-context Qwen 3.5 model:
-```bash
-ollama pull qwen3.5:4b
-
-```
-3. Set the system variables to preserve memory stability and prevent aggressive unloading over group chat lulls:
-   ```bash
-   echo 'export OLLAMA_NUM_PARALLEL=2' >> ~/.bashrc
-   echo 'export OLLAMA_KEEP_ALIVE="24h"' >> ~/.bashrc
-   source ~/.bashrc
-
-```
+> **Local model option (not required):** If you ever want to run a local fallback, install [Ollama](https://ollama.com) and pull a model with `ollama pull qwen3.5:4b`. This is entirely optional and not used by the default config.
 
 ### Phase 2: Create Local Directory Structure
 
@@ -116,7 +104,7 @@ colima start --cpu 4 --memory 8 --disk 60 --vm-type=vz --mount-type=virtiofs
 
 - `--vm-type=vz` uses Apple's native `Virtualization.framework` (faster, lower overhead than QEMU)
 - `--mount-type=virtiofs` provides near-native filesystem performance between macOS and the VM
-- `--memory 8` gives the VM 8 GB, leaving the remaining ~8 GB for macOS and Ollama
+- `--memory 8` gives the VM 8 GB, leaving the remaining ~8 GB for macOS and other apps
 
 Verify it works:
 
@@ -131,9 +119,7 @@ docker compose version  # should be v2+
 
 ### Phase 3: The Hardened Multi-Container Orchestration Blueprint
 
-A pre-built `docker-compose.yml` exists in the repo at `~/info-butler/docker-compose.yml`. The configuration below constrains the Hermes container to **4 CPU cores and 6 GB of RAM** — with the Colima VM capped at 8 GB total across all containers, leaving ~6 GB headroom for macOS and Ollama after the Qwen 3.5 4B model (~3.4 GB) is loaded.
-
-> **Design note:** The model was switched from Qwen 3.5 9B (6.6 GB) to 4B (3.4 GB) after profiling showed the 9B + Docker + macOS exceeded 16 GB of unified memory, causing kernel OOM kills under load. With Colima capped at 8 GB and the Qwen 4B model at ~3.4 GB, the total system budget sits at roughly 15 GB — tight but stable.
+A pre-built `docker-compose.yml` exists in the repo at `~/info-butler/docker-compose.yml`. The configuration below constrains the Hermes container to **4 CPU cores and 6 GB of RAM**. Since the primary model is DeepSeek V4 Flash (a cloud API), no local GPU memory is consumed by the model — the only RAM pressure is from Docker itself and macOS.
 
 ```yaml
 # File: ~/info-butler/docker-compose.yml
@@ -157,13 +143,11 @@ services:
       - TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
       - TELEGRAM_ALLOWED_USERS=user_id_1,user_id_2
       - TELEGRAM_GROUP_ALLOWED_CHATS=-1001234567890
-      # ── Chat model configured via mounted config/config.yaml ──
-      # (uses provider: custom, points at Ollama)
-      # ── OpenAI key for image generation and tools ──
-      # Tools like gpt-image-1-mini call OpenAI directly.
-      # Only needed if you want /draw to work.
-      - OPENAI_API_KEY=sk-your-real-openai-key-here
-      # ── Cloud fallback for heavy reasoning ──
+      # ── Primary model: DeepSeek V4 Flash ──
+      - DEEPSEEK_API_KEY=sk-your-deepseek-api-key-here
+      # ── OpenAI key for image generation (gpt-image-1-mini) ──
+      - OPENAI_API_KEY=sk-your-openai-key-here
+      # ── Gemini for document parsing fallback ──
       - GEMINI_API_KEY=your_google_gemini_api_key_here
       # Dashboard disabled — needs auth provider plugin or --insecure flag
       # - HERMES_DASHBOARD=1
@@ -201,25 +185,26 @@ services:
 4. **Disable privacy mode (required for @mentions in groups):** In @BotFather, go to `/mybots` → your bot → Bot Settings → Group Privacy → Turn off. Then **remove and re-add** the bot to your group (Telegram caches privacy on join).
 
    > **Why this matters:** With privacy mode on (the default), Telegram only delivers messages starting with `/` to the bot. `@your_bot_name` mentions are silently dropped. After disabling privacy mode, both `/commands` and `@mentions` will work. The bot must be removed and re-added to the group after changing this setting — Telegram does not re-evaluate privacy until the bot rejoins.
-5. **Configure the local chat model:** A `config/config.yaml` file is mounted into the container with the correct `custom` provider pointing at Ollama:
+5. **Configure the primary model (DeepSeek V4 Flash):** A `config/config.yaml` file is mounted into the container with the `deepseek` provider. This is the default chat model for all conversations:
 
    ```yaml
    # File: config/config.yaml
    model:
-     default: "qwen3.5:4b"
-     provider: "custom"
-     base_url: "http://host.docker.internal:11434/v1"
+     default: "deepseek-v4-flash"
+     provider: "deepseek"
    ```
 
-   This survives restarts, rebuilds, and full machine reboots. No env vars needed — the `custom` provider is configured entirely through the mounted file. The `docker-compose.yml` has no `OPENAI_BASE_URL` or `HERMES_MODEL` env vars because those only work with the `openai` provider (which doesn't exist in Hermes' provider list).
+   No base URL or custom endpoint needed — Hermes' built-in `deepseek` provider routes to `https://api.deepseek.com/v1` automatically. The API key is set via the `DEEPSEEK_API_KEY` env var.
 
-6. **Set a real OpenAI key for image generation (optional):** Tools like `gpt-image-1-mini` call OpenAI directly and need a real API key:
+   Pricing: **$0.14 / 1M input tokens, $0.28 / 1M output tokens**. A typical day of active use might cost $1–3.
+
+6. **Set OpenAI key for image generation (optional):** Tools like `gpt-image-1-mini` call OpenAI directly:
 
    ```yaml
-   - OPENAI_API_KEY=sk-your-real-openai-key-here
+   - OPENAI_API_KEY=sk-your-openai-key-here
    ```
 
-7. **Set Gemini key (optional, for heavy tasks):** `GEMINI_API_KEY` from [Google AI Studio](https://aistudio.google.com). Only needed for complex document parsing and code generation — the local Qwen handles routine chat for free.
+7. **Set Gemini key (optional, for heavy tasks):** `GEMINI_API_KEY` from [Google AI Studio](https://aistudio.google.com). Only needed if you want document parsing or code generation routed to Gemini instead of DeepSeek.
 
 > ⚠️ If you accidentally expose your bot token (as happened during setup), revoke it immediately via @BotFather → `/mybots` → your bot → API Token → Revoke. Then update `TELEGRAM_BOT_TOKEN` in `docker-compose.yml` with the new one.
 
@@ -342,7 +327,7 @@ Then `cat ~/info-butler/logs/gateway.log` without needing `docker exec`.
 | Bot works in DMs but silent in group | Privacy mode is on, or not re-added after change | Disable privacy, remove and re-add bot |
 | `docker logs` shows banner but no Telegram activity | Normal — gateway logs go to file | Use `docker exec hermes-butler tail /opt/data/logs/gateway.log` |
 | `Additional property memory is not allowed` | `memory` at service level (v3.8) | Nest under `deploy.resources.limits` |
-| Container can't reach Ollama | `host.docker.internal` unreachable | Verify Ollama is running; check `OLLAMA_HOST` |
+| Model provider auth fails | Missing or wrong API key | Check `DEEPSEEK_API_KEY`, `OPENAI_API_KEY`, or `GEMINI_API_KEY` in docker-compose.yml |
 
 ---
 
@@ -354,26 +339,19 @@ For a 24/7 agent on a Mac Mini, the stack needs to come back fully functional af
 
 | Component | Mechanism | Status |
 |---|---|---|
-| **Ollama** (natively on macOS) | macOS Login Item (set during install) | ✅ Auto-starts by default |
-| **Colima** (Docker runtime) | `brew services start colima` | ⚙️ One-time setup below |
+| **Docker runtime** (Colima) | `brew services start colima` | ⚙️ One-time setup below |
 | **Hermes + Quartz** (containers) | `restart: unless-stopped` in docker-compose.yml | ✅ Docker daemon restores them automatically |
+
+Since the primary model is DeepSeek V4 Flash (a cloud API), there's no local Ollama process to manage. The only thing to auto-start is the Docker runtime.
 
 ### One-time setup
 
 ```bash
-# 1. Register Colima as a launchd service (auto-starts at login)
+# Register Colima as a launchd service (auto-starts at login)
 brew services start colima
-
-# 2. Make sure Ollama's env vars survive reboot
-# (In ~/.bashrc but that only applies to terminals, not the app — use launchctl)
-launchctl setenv OLLAMA_NUM_PARALLEL 2
-launchctl setenv OLLAMA_KEEP_ALIVE 24h
-
-# 3. Restart Ollama so it picks up the env vars
-killall ollama && open -a Ollama
 ```
 
-> **Check it survived a reboot:** After restarting the Mac, run `docker info` and `curl http://localhost:11434/api/tags` without touching anything. Both should respond within 30 seconds of login.
+> **Check it survived a reboot:** After restarting the Mac, run `docker ps` — Hermes and Quartz should both show `Up` status within 30 seconds of login.
 
 ### Startup sequence (what happens after a power cycle)
 
@@ -381,18 +359,15 @@ killall ollama && open -a Ollama
 Mac boots
   │
   ├── macOS login (auto-login or manual)
-  │     │
-  │     ├── Ollama app starts (Login Item)             → ~5s after login
-  │     ├── Colima starts (brew services / launchd)     → ~10-15s after login
-  │     │     └── Docker daemon comes up
-  │     │           └── Hermes container restarts       → Docker's restart policy
-  │     │                 └── Quartz container restarts  → Docker's restart policy
-  │     │
-  │     └── Hermes connects to Ollama                   → retries until ready (~30s)
-  │           └── Bot goes online
+  │     └── Colima starts (brew services / launchd)     → ~10-15s after login
+  │           └── Docker daemon comes up
+  │                 ├── Hermes container restarts        → Docker's restart policy
+  │                 └── Quartz container restarts        → Docker's restart policy
+  │
+  └── Bot goes online (no local model to wait for)      → ~20s after login
 ```
 
-No cron job, no startup script, no manual `docker compose up -d` needed. Docker daemon stores the restart policy for each container permanently. When the daemon comes back, it reconciles all containers against their policies and starts anything set to `unless-stopped` or `always`.
+No cron job, no startup script, no manual `docker compose up -d` needed. Docker daemon stores the restart policy for each container permanently.
 
 ### Optional: Enable auto-login (headless/server Mac Mini)
 

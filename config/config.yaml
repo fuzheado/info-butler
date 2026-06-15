@@ -1,6 +1,5 @@
-# Default chat model: local Ollama
-# See: https://hermes-agent.nousresearch.com/docs/guides/local-ollama-setup
+# Default model: DeepSeek V4 Flash via DeepSeek API
+# Fast, cheap ($0.14/1M in, $0.28/1M out), strong tool calling
 model:
-  default: "qwen3.5:4b"
-  provider: "custom"
-  base_url: "http://host.docker.internal:11434/v1"
+  default: "deepseek-v4-flash"
+  provider: "deepseek"
