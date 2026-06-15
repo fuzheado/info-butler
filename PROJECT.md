@@ -236,10 +236,10 @@ services:
 
 ### 4.1 Step 1: The Master Profile Setup
 
-Create a custom configuration profile file inside `~/info-butler/config/profile.yaml`. This injects your strategic routing rules straight into Hermes' system prompt instructions:
+A profile file is already included in the repo at `config/profile.yaml`. It injects routing rules into Hermes' system prompt:
 
 ```yaml
-# Save this to ~/info-butler/config/profile.yaml
+# File: ~/info-butler/config/profile.yaml
 profile_name: "info_butler"
 system_prompt: |
   You are the designated Project Info Butler. You manage a directory of interconnected, non-linear Markdown files located inside `/opt/data/wiki`.
@@ -249,8 +249,15 @@ system_prompt: |
   - Every time you document an idea or process a chat command, you must link it using double-bracket WikiLinks (e.g., [[Tech_Stack]] or [[Project_Milestones]]).
   - When asked to create an asset or a logo, you MUST call the external image generation tool (`openai/gpt-image-1-mini`).
   - When asked to run multi-file software engineering or prototype code, you MUST escalate execution to the cloud-linked `gemini-3.5-flash` engine.
-
 ```
+
+To activate it inside the container:
+
+```bash
+docker exec hermes-butler hermes profile activate info_butler
+```
+
+This tells Hermes to use these system prompt instructions for all conversations.
 
 ### 4.2 Step 2: The Automatic Backup Blueprint
 
