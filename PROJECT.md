@@ -96,12 +96,13 @@ cd ~/info-butler
 
 ### Phase 3: The Hardened Multi-Container Orchestration Blueprint
 
-Create your `docker-compose.yml` file to bind the running agent to your Mac's host gateway.
+A pre-built `docker-compose.yml` exists in the repo at `~/info-butler/docker-compose.yml`. The configuration below constrains the Hermes container to **4 CPU cores and 6 GB of RAM** — leaving ~6 GB headroom for macOS and Ollama after the Qwen 3.5 4B model (~3.4 GB) is loaded.
 
-We constrain the Hermes container to exactly **2 CPU cores and 2 GB of RAM**—freeing up a massive 10 GB of system memory headroom to guarantee the host OS never experiences kernel out-of-memory crashes.
+> **Design note:** The model was switched from Qwen 3.5 9B (6.6 GB) to 4B (3.4 GB) after profiling showed the 9B + Docker + macOS exceeded 16 GB of unified memory, causing kernel OOM kills under load.
 
 ```yaml
-# Save this file to ~/info-butler/docker-compose.yml
+# File: ~/info-butler/docker-compose.yml
+# (edit the file directly — this snippet tracks the repo version)
 version: '3.8'
 
 services:
@@ -109,17 +110,24 @@ services:
     image: nousresearch/hermes-agent:latest
     container_name: hermes-butler
     restart: unless-stopped
-    cpus: "2.0"       # Resource constraint to guarantee macOS system stability
-    memory: "2g"      # Lowered memory footprint tailored exactly for 16GB Mac Mini
+    deploy:
+      resources:
+        limits:
+          cpus: "4.0"
+          memory: 6g
     ports:
-      - "9119:9119"   # Admin Dashboard WebSocket Connection
-      - "8642:8642"   # OpenAI-Compatible API Server Endpoint
+      - "9119:9119"   # Admin Dashboard
     environment:
+      # Telegram bot token (get from @BotFather)
       - TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
+      # Authorized user IDs (get from @userinfobot)
+      - TELEGRAM_ALLOWED_USERS=user_id_1,user_id_2
+      # Restrict to specific group chat (get ID from web.telegram.org URL)
+      - TELEGRAM_GROUP_ALLOWED_CHATS=-1001234567890
+      # API keys
       - GEMINI_API_KEY=your_google_gemini_api_key_here
       - OPENAI_API_KEY=your_openai_api_key_here
-      - GATEWAY_ALLOW_ALL_USERS=false   # Hardened security configuration
-      - HERMES_AUTH_USERS=your_tg_id_1,partner_tg_id_2,partner_tg_id_3 # Comma-separated list of authorized IDs
+      # Hermes config
       - HERMES_DASHBOARD=1
       - OLLAMA_HOST=http://host.docker.internal:11434
     volumes:
@@ -133,10 +141,9 @@ services:
     container_name: quartz-wiki
     restart: unless-stopped
     ports:
-      - "8080:8080"  # Publicly exposed portal to view the visual mind-map graph
+      - "8080:8080"
     volumes:
       - ./wiki:/usr/src/app/content
-      - quartz_node_modules:/usr/src/app/node_modules # Persistent volume prevents re-cloning dependencies on reboot
     working_dir: /usr/src/app
     command: >
       sh -c "if [ ! -d '.git' ]; then
@@ -146,11 +153,17 @@ services:
                npx quartz create --action copy --link content;
              fi &&
              npx quartz build --serve --port 8080"
-
-volumes:
-  quartz_node_modules: # Native caching persistence layer
-
 ```
+
+#### Credential setup walkthrough
+
+1. **Create a bot:** Message [@BotFather](https://t.me/BotFather), send `/newbot`, pick a name and username. Save the API token — that's `TELEGRAM_BOT_TOKEN`.
+2. **Get user IDs:** Each authorized person messages [@userinfobot](https://t.me/userinfobot) — it replies with their numeric ID. Add them to `TELEGRAM_ALLOWED_USERS`.
+3. **Get the group chat ID:** Open your group in [web.telegram.org](https://web.telegram.org). The URL contains `#-1001234567890` — that number is `TELEGRAM_GROUP_ALLOWED_CHATS`.
+4. **Disable privacy mode (required for group listening):** In @BotFather, go to `/mybots` → your bot → Bot Settings → Group Privacy → Turn off. Then **remove and re-add** the bot to your group (Telegram caches privacy on join).
+5. **Set API keys:** `GEMINI_API_KEY` from [Google AI Studio](https://aistudio.google.com), `OPENAI_API_KEY` from [platform.openai.com](https://platform.openai.com).
+
+> ⚠️ If you accidentally expose your bot token (as happened during setup), revoke it immediately via @BotFather → `/mybots` → your bot → API Token → Revoke. Then update `TELEGRAM_BOT_TOKEN` in `docker-compose.yml` with the new one.
 
 ---
 
@@ -178,14 +191,15 @@ system_prompt: |
 
 ### 4.2 Step 2: The Automatic Backup Blueprint
 
-To prevent volume corruption or database loss, use the native macOS `cron` engine to automatically take snapshots of your team's visual wiki data on your Mac Mini host.
+The entire `~/info-butler` directory is already tracked as a git repository pushed to GitHub. For hourly automatic snapshots:
 
 1. Open your host terminal and run `crontab -e`.
-2. Add the following entry to commit and push changes silently every single hour:
+2. Add the following entry:
 ```text
-0 * * * * cd ~/info-butler/wiki && git init && git add . && git commit -m "Automated Butler Snapshot: $(date)"
-
+0 * * * * cd ~/info-butler && git add -A && git commit -m "Auto-snapshot $(date)" && git push
 ```
+
+> The `.gitignore` excludes auto-generated runtime content under `wiki/` and `node_modules/`. Only source files (config, docs, compose files) are versioned.
 
 
 
@@ -197,8 +211,10 @@ To prevent volume corruption or database loss, use the native macOS `cron` engin
 
 To enable fluid collaboration from outside your home network without exposing root server credentials or administrative ports to the public internet, we utilize a bifurcated routing topology:
 
-1. **The Admin Gateway (Hermes Dashboard):** Completely locked down. Accessible only through an encrypted **Cloudflare Tunnel** wrapped in Cloudflare Access (requiring a one-time email PIN login). Teammates can connect their local native Hermes Desktop Apps directly to this remote secure endpoint by referencing your custom secure domain (`[https://admin.yourdomain.com](https://admin.yourdomain.com)`).
+1. **The Admin Gateway (Hermes Dashboard):** Completely locked down. Accessible only through an encrypted **Cloudflare Tunnel** wrapped in Cloudflare Access (requiring a one-time email PIN login). Teammates can connect their local native Hermes Desktop Apps directly to this remote secure endpoint by referencing your custom secure domain (`https://admin.yourdomain.com`).
 2. **The Living Wiki (Quartz 5 Visualizer):** Rendered as a read-only, interactive web node. It is safe to expose port `8080` to a standard public network route or standard router forward so the entire team can browse the evolving project notes, mind-maps, and bi-directional backlinked graphs.
+
+> **Setup note:** Cloudflare Tunnel + Access require a registered domain, a Cloudflare account, and `cloudflared` installed on the Mac Mini. See the [Cloudflare Tunnel docs](https://developers.cloudflare.com/tunnel/setup/). This step is optional — for local-only access, ports `8080` and `9119` work fine on your home network.
 
 ---
 
@@ -214,7 +230,23 @@ docker compose up -d
 
 ### Verification Steps:
 
-1. Confirm logs show the Telegram Bot Gateway initialized and authenticated successfully: `docker logs hermes-butler`.
-2. Test tool authorization constraints by having an unauthorized group member attempt to message the bot. It should gracefully drop the prompt.
-3. Test your visual linking: Drop a message in your chat: `@YourBotName update our technical requirements to link [[Database_Architecture]] to [[M1_Mac_Hosting]].`
-4. **Latency Expectation Note:** Refresh your browser window at `http://localhost:8080`. Because Quartz uses a static-batch file builder engine to index connections, the new node will materialize on your D3 force-directed network graph within **15 to 30 seconds**—allowing your team to seamlessly trace the project's evolution as your notes continuously grow.
+1. Confirm the Telegram gateway initialized:
+   ```bash
+   docker logs hermes-butler 2>&1 | grep -i "telegram"
+   ```
+2. Send a message to the bot in your group (e.g. `/help`). Check delivery:
+   ```bash
+   curl -s "https://api.telegram.org/bot<TOKEN>/getUpdates" | python3 -m json.tool
+   ```
+3. Test authorization — an unlisted user's messages should be silently dropped.
+4. Test visual linking: `@YourBotName link [[Database_Architecture]] to [[M1_Mac_Hosting]]`
+5. **Latency Expectation:** Quartz is a static-batch site generator. A new node typically appears on the visual graph within **15–30 seconds** after the agent writes the file.
+
+### Troubleshooting
+
+| Symptom | Likely Cause | Fix |
+|---|---|---|
+| `getUpdates` returns `[]` | Bot hasn't received any messages | Send `/start` in the group, retry |
+| Bot works in DMs but silent in group | Privacy mode is on | Disable in @BotFather, remove & re-add bot |
+| `Additional property memory is not allowed` | `memory` at service level (v3.8) | Nest under `deploy.resources.limits` |
+| Container can't reach Ollama | `host.docker.internal` unreachable | Verify Ollama is running; check `OLLAMA_HOST` |
