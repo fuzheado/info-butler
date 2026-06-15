@@ -94,11 +94,44 @@ cd ~/info-butler
 
 ```
 
+### Phase 2.5: Docker Runtime (Mac-Specific)
+
+With only 16 GB of unified memory, choosing the right Docker backend matters. Every background process competes with Ollama and your containers for RAM.
+
+| Option | Idle RAM | Apple Silicon | Cost | Verdict |
+|---|---|---|---|---|
+| **Colima** (recommended) | ~300–500 MB | ✅ Native (Virtualization.framework) | Free | Best balance of perf, memory, and price |
+| **OrbStack** | ~200–400 MB | ✅ Native | $10/mo | Slightly faster, has GUI, paid |
+| **Docker Desktop** | ~1–2 GB | ✅ Native | Free (personal) | Heavy — 1–2 GB overhead hurts on 16GB |
+| `brew install docker` alone | 0 | N/A | Free | ❌ CLI only — can't actually run containers |
+
+#### Setup: Colima (recommended)
+
+```bash
+brew install docker docker-compose colima
+
+# Start the VM with a tight resource budget
+colima start --cpu 4 --memory 8 --disk 60 --vm-type=vz --mount-type=virtiofs
+```
+
+- `--vm-type=vz` uses Apple's native `Virtualization.framework` (faster, lower overhead than QEMU)
+- `--mount-type=virtiofs` provides near-native filesystem performance between macOS and the VM
+- `--memory 8` gives the VM 8 GB, leaving the remaining ~8 GB for macOS and Ollama
+
+Verify it works:
+
+```bash
+docker info          # should show Colima as runtime
+docker compose version  # should be v2+
+```
+
+> **Note:** `brew install docker` alone is just the CLI client with no runtime — don't stop there. You need Colima or OrbStack to actually run containers.
+
 ### Phase 3: The Hardened Multi-Container Orchestration Blueprint
 
-A pre-built `docker-compose.yml` exists in the repo at `~/info-butler/docker-compose.yml`. The configuration below constrains the Hermes container to **4 CPU cores and 6 GB of RAM** — leaving ~6 GB headroom for macOS and Ollama after the Qwen 3.5 4B model (~3.4 GB) is loaded.
+A pre-built `docker-compose.yml` exists in the repo at `~/info-butler/docker-compose.yml`. The configuration below constrains the Hermes container to **4 CPU cores and 6 GB of RAM** — with the Colima VM capped at 8 GB total across all containers, leaving ~6 GB headroom for macOS and Ollama after the Qwen 3.5 4B model (~3.4 GB) is loaded.
 
-> **Design note:** The model was switched from Qwen 3.5 9B (6.6 GB) to 4B (3.4 GB) after profiling showed the 9B + Docker + macOS exceeded 16 GB of unified memory, causing kernel OOM kills under load.
+> **Design note:** The model was switched from Qwen 3.5 9B (6.6 GB) to 4B (3.4 GB) after profiling showed the 9B + Docker + macOS exceeded 16 GB of unified memory, causing kernel OOM kills under load. With Colima capped at 8 GB and the Qwen 4B model at ~3.4 GB, the total system budget sits at roughly 15 GB — tight but stable.
 
 ```yaml
 # File: ~/info-butler/docker-compose.yml
