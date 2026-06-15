@@ -5,6 +5,7 @@ services:
     image: nousresearch/hermes-agent:latest
     container_name: hermes-butler
     restart: unless-stopped
+    command: ["gateway", "run"]
     deploy:
       resources:
         limits:
