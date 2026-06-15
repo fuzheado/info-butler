@@ -153,21 +153,22 @@ services:
     ports:
       - "9119:9119"   # Admin Dashboard
     environment:
-      # Telegram bot token (get from @BotFather)
+      # ── Telegram ──
       - TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
-      # Authorized user IDs (get from @userinfobot)
       - TELEGRAM_ALLOWED_USERS=user_id_1,user_id_2
-      # Restrict to specific group chat (get ID from web.telegram.org URL)
       - TELEGRAM_GROUP_ALLOWED_CHATS=-1001234567890
-      # API keys
+      # ── Local model: Ollama (OpenAI-compatible endpoint) ──
+      - OPENAI_BASE_URL=http://host.docker.internal:11434/v1
+      - OPENAI_API_KEY=ollama
+      - HERMES_MODEL=qwen3.5:4b
+      # ── Cloud fallbacks for heavy tasks ──
       - GEMINI_API_KEY=your_google_gemini_api_key_here
-      - OPENAI_API_KEY=your_openai_api_key_here
-      # Hermes config
-      - HERMES_DASHBOARD=1
-      - OLLAMA_HOST=http://host.docker.internal:11434
+      # Dashboard disabled — needs auth provider plugin or --insecure flag
+      # - HERMES_DASHBOARD=1
     volumes:
       - ./wiki:/opt/data/wiki
       - ./config:/opt/data/config
+      - ./config/config.yaml:/opt/data/config.yaml:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
@@ -198,7 +199,17 @@ services:
 4. **Disable privacy mode (required for @mentions in groups):** In @BotFather, go to `/mybots` → your bot → Bot Settings → Group Privacy → Turn off. Then **remove and re-add** the bot to your group (Telegram caches privacy on join).
 
    > **Why this matters:** With privacy mode on (the default), Telegram only delivers messages starting with `/` to the bot. `@your_bot_name` mentions are silently dropped. After disabling privacy mode, both `/commands` and `@mentions` will work. The bot must be removed and re-added to the group after changing this setting — Telegram does not re-evaluate privacy until the bot rejoins.
-5. **Set API keys:** `GEMINI_API_KEY` from [Google AI Studio](https://aistudio.google.com), `OPENAI_API_KEY` from [platform.openai.com](https://platform.openai.com).
+5. **Configure the local model:** Hermes is pre-configured to use Ollama as its model backend via:
+
+   ```yaml
+   OPENAI_BASE_URL=http://host.docker.internal:11434/v1
+   OPENAI_API_KEY=ollama          # Ollama doesn't validate keys; any value works
+   HERMES_MODEL=qwen3.5:4b
+   ```
+
+   And a `config/config.yaml` file is mounted into the container at `/opt/data/config.yaml` with the provider set to `openai`. This survives container restarts and rebuilds.
+
+6. **Set cloud API keys (optional, for heavy tasks):** `GEMINI_API_KEY` from [Google AI Studio](https://aistudio.google.com). The local Qwen model handles routine chat parsing for free; Gemini is only called for complex tasks.
 
 > ⚠️ If you accidentally expose your bot token (as happened during setup), revoke it immediately via @BotFather → `/mybots` → your bot → API Token → Revoke. Then update `TELEGRAM_BOT_TOKEN` in `docker-compose.yml` with the new one.
 

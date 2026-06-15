@@ -1,0 +1,7 @@
+# Hermes model configuration: route through local Ollama
+# Ollama exposes an OpenAI-compatible API at /v1
+model:
+  provider: openai
+  base_url: http://host.docker.internal:11434/v1
+  api_key: ollama
+  model: qwen3.5:4b

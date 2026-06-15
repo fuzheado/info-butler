@@ -14,20 +14,22 @@ services:
     ports:
       - "9119:9119" # Exposes Admin Dashboard WebSockets for the Remote Desktop App
     environment:
+      # ── Telegram ──
       - TELEGRAM_BOT_TOKEN=your_telegram_bot_token_here
-      - GEMINI_API_KEY=your_google_gemini_api_key_here
-      - OPENAI_API_KEY=your_openai_api_key_here
-      # Remove GATEWAY_ALLOW_ALL_USERS — deny-by-default is safer
-      # Get user IDs from @userinfobot on Telegram
       - TELEGRAM_ALLOWED_USERS=user_id_1,user_id_2
-      # Restrict to specific group chats (get chat ID from @getidsbot)
       - TELEGRAM_GROUP_ALLOWED_CHATS=-1001234567890
-      # Dashboard disabled for now — needs auth provider plugin or --insecure flag
+      # ── Local model: Ollama (OpenAI-compatible endpoint) ──
+      - OPENAI_BASE_URL=http://host.docker.internal:11434/v1
+      - OPENAI_API_KEY=ollama
+      - HERMES_MODEL=qwen3.5:4b
+      # ── Cloud fallbacks for heavy tasks ──
+      - GEMINI_API_KEY=your_google_gemini_api_key_here
+      # Dashboard disabled — needs auth provider plugin or --insecure flag
       # - HERMES_DASHBOARD=1
-      - OLLAMA_HOST=http://host.docker.internal:11434
     volumes:
       - ./wiki:/opt/data/wiki
       - ./config:/opt/data/config
+      - ./config/config.yaml:/opt/data/config.yaml:ro
     extra_hosts:
       - "host.docker.internal:host-gateway"
 
