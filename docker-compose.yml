@@ -22,7 +22,8 @@ services:
       - TELEGRAM_ALLOWED_USERS=user_id_1,user_id_2
       # Restrict to specific group chats (get chat ID from @getidsbot)
       - TELEGRAM_GROUP_ALLOWED_CHATS=-1001234567890
-      - HERMES_DASHBOARD=1
+      # Dashboard disabled for now — needs auth provider plugin or --insecure flag
+      # - HERMES_DASHBOARD=1
       - OLLAMA_HOST=http://host.docker.internal:11434
     volumes:
       - ./wiki:/opt/data/wiki
